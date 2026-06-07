@@ -5,6 +5,8 @@ import { eq } from "drizzle-orm";
 import { db, balancesTable, dealsTable } from "@workspace/db";
 import { logger } from "./lib/logger";
 
+const NO_DB_MSG = "⚠️ База данных не подключена. Напишите @king_helper для пополнения баланса.";
+
 const SUPPORT_USERNAME = "@king_helper";
 const ADMIN_CHAT_ID = -1003841813791;
 const ASSETS_DIR = path.join(__dirname, "../src/assets");
@@ -123,7 +125,8 @@ function isPrivate(ctx: MyContext): boolean {
 
 type BalanceRow = typeof balancesTable.$inferSelect;
 
-async function getOrCreateBalance(userId: string): Promise<BalanceRow> {
+async function getOrCreateBalance(userId: string): Promise<BalanceRow | null> {
+  if (!db) return null;
   const existing = await db.select().from(balancesTable).where(eq(balancesTable.userId, userId)).limit(1);
   if (existing.length > 0) return existing[0];
   const [created] = await db.insert(balancesTable).values({ userId }).returning();
@@ -157,6 +160,7 @@ export function createBot() {
     const startParam = ctx.match;
     if (typeof startParam === "string" && startParam.startsWith("deal_")) {
       const dealId = startParam.replace("deal_", "");
+      if (!db) { await ctx.reply(NO_DB_MSG, { reply_markup: mainMenu() }); return; }
       const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.dealId, dealId)).limit(1);
 
       if (!deal) { await ctx.reply("❌ Сделка не найдена или аннулирована.", { reply_markup: mainMenu() }); return; }
@@ -242,7 +246,9 @@ export function createBot() {
         await ctx.reply("❌ Неверные параметры\\. Пример: `/add 123456789 500 usdt` или `/add 123456789 100 грн`\\.\nВалюты: `грн, руб, usd, eur, usdt, btc, eth, ton, stars, sol, not, kzt, byn, gbp, cny`", { parse_mode: "MarkdownV2" });
         return;
       }
+      if (!db) { await ctx.reply("❌ База данных не подключена\\.", { parse_mode: "MarkdownV2" }); return; }
       const bal = await getOrCreateBalance(targetId);
+      if (!bal) { await ctx.reply("❌ База данных не подключена\\.", { parse_mode: "MarkdownV2" }); return; }
       const colName = CURRENCY_DB[currency];
       const current = parseFloat(((bal as Record<string, unknown>)[colName] as string) ?? "0");
       const newVal = (current + amount).toFixed(8);
@@ -288,7 +294,7 @@ export function createBot() {
 
   async function sendStats(ctx: MyContext) {
     if (!isPrivate(ctx)) return;
-    const allDeals = await db.select().from(dealsTable);
+    const allDeals = db ? await db.select().from(dealsTable) : [];
     const paid = allDeals.filter(d => d.status === "paid").length;
     const total = Math.max(paid + 19783, 19783);
     const caption =
@@ -308,6 +314,11 @@ export function createBot() {
     if (!isPrivate(ctx)) return;
     const userId = String(ctx.from?.id ?? "");
     const bal = await getOrCreateBalance(userId);
+
+    if (!bal) {
+      await ctx.reply(NO_DB_MSG, { reply_markup: mainMenu() });
+      return;
+    }
 
     const fmt = (cur: Currency, decimals = 2) =>
       parseFloat(((bal as Record<string, unknown>)[CURRENCY_DB[cur]] as string) ?? "0").toFixed(decimals);
@@ -353,6 +364,7 @@ export function createBot() {
   bot.callbackQuery(/^pay_/, async (ctx) => {
     await ctx.answerCallbackQuery();
     try {
+      if (!db) { await ctx.reply(NO_DB_MSG, { reply_markup: mainMenu() }); return; }
       const dealId = ctx.callbackQuery.data.replace("pay_", "");
       const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.dealId, dealId)).limit(1);
 
@@ -363,6 +375,7 @@ export function createBot() {
 
       const buyerId = String(ctx.from.id);
       const bal = await getOrCreateBalance(buyerId);
+      if (!bal) { await ctx.reply(NO_DB_MSG, { reply_markup: mainMenu() }); return; }
       const currency = deal.currency as Currency;
       const colName = CURRENCY_DB[currency] ?? currency;
       const price = parseFloat(deal.price as string);
@@ -423,6 +436,7 @@ export function createBot() {
 
       const dealId = generateDealId();
       const sellerId = String(ctx.from.id);
+      if (!db) { await ctx.reply(NO_DB_MSG, { reply_markup: mainMenu() }); return; }
       await db.insert(dealsTable).values({ dealId, sellerId, title, price: price.toString(), currency, status: "active" });
 
       const me = await bot.api.getMe();

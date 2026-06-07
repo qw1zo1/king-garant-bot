@@ -5,16 +5,16 @@ import * as schema from "./schema";
 
 const { Pool } = pg;
 
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
+export let pool: pg.Pool | null = null;
+export let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
+
+if (process.env.DATABASE_URL) {
+  pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  db = drizzle(pool, { schema });
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle(pool, { schema });
-
 export async function runMigrations() {
+  if (!db) return; // no DB configured — skip
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "balances" (
       "user_id"    text PRIMARY KEY NOT NULL,
