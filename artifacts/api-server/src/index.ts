@@ -23,6 +23,14 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  // Keep-alive ping every 10 min so Render doesn't suspend the service
+  if (process.env.NODE_ENV === "production") {
+    setInterval(() => {
+      const http = require("node:http");
+      http.get(`http://localhost:${port}/api/healthz`, () => {}).on("error", () => {});
+    }, 10 * 60 * 1000);
+  }
 });
 
 // Start Telegram bot

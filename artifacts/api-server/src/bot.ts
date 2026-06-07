@@ -7,7 +7,7 @@ import { logger } from "./lib/logger";
 
 const SUPPORT_USERNAME = "@king_helper";
 const ADMIN_CHAT_ID = -1003841813791;
-const ASSETS_DIR = path.resolve("src/assets");
+const ASSETS_DIR = path.join(__dirname, "../src/assets");
 
 function img(name: string): InputFile {
   return new InputFile(createReadStream(path.join(ASSETS_DIR, name)), name);

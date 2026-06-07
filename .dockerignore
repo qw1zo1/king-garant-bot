@@ -1,0 +1,12 @@
+**/dist
+**/.tsbuildinfo
+**/.cache
+**/coverage
+attached_assets
+.local
+.cursor
+.replit
+replit.nix
+*.md
+.git
+.github
