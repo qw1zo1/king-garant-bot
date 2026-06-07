@@ -429,10 +429,11 @@ export function createBot() {
     if (step === "title") {
       ctx.session.dealTitle = text;
       ctx.session.step = "price";
-      await ctx.reply(
-        `✅ Название: *${esc(text)}*\n\n💰 *Шаг 2 из 3 — Введите цену:*\n\nПримеры: \`500\`, \`1250\`, \`12.5\``,
-        { parse_mode: "MarkdownV2", reply_markup: mainMenu() },
-      );
+      await ctx.replyWithPhoto(img("deal_create.png"), {
+        caption: `✅ Название: *${esc(text)}*\n\n💰 *Шаг 2 из 3 — Введите цену:*\n\nПримеры: \`500\`, \`1250\`, \`12.5\``,
+        parse_mode: "MarkdownV2",
+        reply_markup: mainMenu(),
+      });
       return;
     }
 
@@ -443,10 +444,11 @@ export function createBot() {
         return;
       }
       ctx.session.dealPrice = price;
-      await ctx.reply(
-        `✅ Цена: *${fmtPrice(price)}*\n\n💱 *Шаг 3 из 3 — Выберите валюту:*`,
-        { parse_mode: "MarkdownV2", reply_markup: currencyKeyboard() },
-      );
+      await ctx.replyWithPhoto(img("deal_create.png"), {
+        caption: `✅ Цена: *${fmtPrice(price)}*\n\n💱 *Шаг 3 из 3 — Выберите валюту:*`,
+        parse_mode: "MarkdownV2",
+        reply_markup: currencyKeyboard(),
+      });
       return;
     }
   });
