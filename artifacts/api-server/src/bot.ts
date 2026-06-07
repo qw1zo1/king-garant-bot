@@ -204,7 +204,26 @@ export function createBot() {
 
     const args = (ctx.match as string | undefined)?.split(" ");
     if (!args || args.length < 3) {
-      await ctx.reply("❌ Формат: `/add userId сумма валюта`\nПример: `/add 123456789 500 usdt`", { parse_mode: "MarkdownV2" });
+      await ctx.reply(
+        "❌ Формат: `/add userId сумма валюта`\n\n" +
+        "✅ *Примеры:*\n" +
+        "`/add 123456789 500 грн`\n" +
+        "`/add 123456789 1000 руб`\n" +
+        "`/add 123456789 50 usd`\n" +
+        "`/add 123456789 30 eur`\n" +
+        "`/add 123456789 100 usdt`\n" +
+        "`/add 123456789 0.001 btc`\n" +
+        "`/add 123456789 0.01 eth`\n" +
+        "`/add 123456789 5 ton`\n" +
+        "`/add 123456789 500 stars`\n" +
+        "`/add 123456789 2 sol`\n" +
+        "`/add 123456789 1000 not`\n" +
+        "`/add 123456789 50000 kzt`\n" +
+        "`/add 123456789 100 byn`\n" +
+        "`/add 123456789 40 gbp`\n" +
+        "`/add 123456789 300 cny`",
+        { parse_mode: "MarkdownV2" },
+      );
       return;
     }
     try {
@@ -212,7 +231,7 @@ export function createBot() {
       const amount = parseFloat(args[1]);
       const currency = normalizeCurrency(args[2]);
       if (!currency || isNaN(parseInt(targetId)) || isNaN(amount) || amount <= 0) {
-        await ctx.reply("❌ Неверные параметры\\. Пример: `/add 123456789 500 usdt`", { parse_mode: "MarkdownV2" });
+        await ctx.reply("❌ Неверные параметры\\. Пример: `/add 123456789 500 usdt` или `/add 123456789 100 грн`\\.\nВалюты: `грн, руб, usd, eur, usdt, btc, eth, ton, stars, sol, not, kzt, byn, gbp, cny`", { parse_mode: "MarkdownV2" });
         return;
       }
       const bal = await getOrCreateBalance(targetId);
@@ -228,7 +247,7 @@ export function createBot() {
           { parse_mode: "MarkdownV2", reply_markup: mainMenu() });
       } catch {}
     } catch {
-      await ctx.reply("❌ Ошибка\\. Пример: `/add 123456789 500 usdt`", { parse_mode: "MarkdownV2" });
+      await ctx.reply("❌ Ошибка\\. Пример: `/add 123456789 500 usdt` или `/add 123456789 100 грн`", { parse_mode: "MarkdownV2" });
     }
   });
 
