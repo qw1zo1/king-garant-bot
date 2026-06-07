@@ -11,10 +11,17 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: king-garant-db
+          property: connectionString
       - key: SESSION_SECRET
         sync: false
       - key: NODE_ENV
         value: production
       - key: PORT
         value: "8080"
+
+databases:
+  - name: king-garant-db
+    plan: free
+    region: frankfurt

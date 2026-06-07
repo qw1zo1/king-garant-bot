@@ -69,6 +69,15 @@ interface SessionData {
 
 type MyContext = Context & SessionFlavor<SessionData>;
 
+// Maps Currency key → actual DB column name in balancesTable
+const CURRENCY_DB: Record<Currency, string> = {
+  hrn: "hrn", rub: "rub", ton: "ton", stars: "stars",
+  usd: "usd", eur: "eur", usdt: "usdt", btc: "btc", eth: "eth",
+  kzt: "kzt", byn: "byn", gbp: "gbp", cny: "cny",
+  notcoin: "not_coin",
+  sol: "sol",
+};
+
 function normalizeCurrency(raw: string): Currency | null {
   return CURRENCY_ALIASES[raw.toLowerCase().trim()] ?? null;
 }
@@ -113,7 +122,6 @@ function isPrivate(ctx: MyContext): boolean {
 }
 
 type BalanceRow = typeof balancesTable.$inferSelect;
-type CurrencyDbKey = "hrn" | "rub" | "ton" | "stars" | "usd" | "eur" | "usdt" | "btc" | "eth" | "kzt" | "byn" | "gbp" | "cny" | "notcoin" | "sol";
 
 async function getOrCreateBalance(userId: string): Promise<BalanceRow> {
   const existing = await db.select().from(balancesTable).where(eq(balancesTable.userId, userId)).limit(1);
@@ -235,10 +243,10 @@ export function createBot() {
         return;
       }
       const bal = await getOrCreateBalance(targetId);
-      const dbKey = currency as CurrencyDbKey;
-      const current = parseFloat((bal[dbKey] as string) ?? "0");
+      const colName = CURRENCY_DB[currency];
+      const current = parseFloat(((bal as Record<string, unknown>)[colName] as string) ?? "0");
       const newVal = (current + amount).toFixed(8);
-      await db.update(balancesTable).set({ [dbKey]: newVal }).where(eq(balancesTable.userId, targetId));
+      await db.update(balancesTable).set({ [colName]: newVal }).where(eq(balancesTable.userId, targetId));
 
       await ctx.reply(`✅ Начислено *${num(amount)} ${CURRENCY_LABELS[currency]}* пользователю \`${targetId}\``, { parse_mode: "MarkdownV2" });
       try {
@@ -301,8 +309,8 @@ export function createBot() {
     const userId = String(ctx.from?.id ?? "");
     const bal = await getOrCreateBalance(userId);
 
-    const fmt = (key: CurrencyDbKey, decimals = 2) =>
-      parseFloat((bal[key] as string) ?? "0").toFixed(decimals);
+    const fmt = (cur: Currency, decimals = 2) =>
+      parseFloat(((bal as Record<string, unknown>)[CURRENCY_DB[cur]] as string) ?? "0").toFixed(decimals);
 
     const caption =
       "💼 *Ваш кошелёк*\n" +
@@ -356,9 +364,9 @@ export function createBot() {
       const buyerId = String(ctx.from.id);
       const bal = await getOrCreateBalance(buyerId);
       const currency = deal.currency as Currency;
-      const dbKey = currency as CurrencyDbKey;
+      const colName = CURRENCY_DB[currency] ?? currency;
       const price = parseFloat(deal.price as string);
-      const have = parseFloat((bal[dbKey] as string) ?? "0");
+      const have = parseFloat(((bal as Record<string, unknown>)[colName] as string) ?? "0");
 
       if (have < price) {
         await ctx.reply(
@@ -368,7 +376,7 @@ export function createBot() {
         return;
       }
 
-      await db.update(balancesTable).set({ [dbKey]: (have - price).toFixed(8) }).where(eq(balancesTable.userId, buyerId));
+      await db.update(balancesTable).set({ [colName]: (have - price).toFixed(8) }).where(eq(balancesTable.userId, buyerId));
       await db.update(dealsTable).set({ status: "paid", buyerId }).where(eq(dealsTable.dealId, dealId));
 
       const caption =

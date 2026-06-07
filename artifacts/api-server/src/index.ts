@@ -1,43 +1,57 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { createBot } from "./bot";
+import { runMigrations } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
+  throw new Error("PORT environment variable is required but was not provided.");
 }
 
 const port = Number(rawPort);
-
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
+async function main() {
+  // Run DB migrations automatically on every startup
+  try {
+    await runMigrations();
+    logger.info("Database migrations applied");
+  } catch (err) {
+    logger.error({ err }, "Failed to run DB migrations");
     process.exit(1);
   }
 
-  logger.info({ port }, "Server listening");
+  app.listen(port, (err) => {
+    if (err) {
+      logger.error({ err }, "Error listening on port");
+      process.exit(1);
+    }
+    logger.info({ port }, "Server listening");
 
-  // Keep-alive ping every 10 min so Render doesn't suspend the service
-  if (process.env.NODE_ENV === "production") {
-    setInterval(() => {
-      const http = require("node:http");
-      http.get(`http://localhost:${port}/api/healthz`, () => {}).on("error", () => {});
-    }, 10 * 60 * 1000);
-  }
-});
-
-// Start Telegram bot
-const bot = createBot();
-if (bot) {
-  bot.start({
-    onStart: (info) => logger.info({ username: info.username }, "Bot started"),
+    // Keep-alive ping every 10 min so Render doesn't suspend the service
+    if (process.env.NODE_ENV === "production") {
+      setInterval(() => {
+        import("node:http").then(({ default: http }) => {
+          http.get(`http://localhost:${port}/api/healthz`, () => {}).on("error", () => {});
+        });
+      }, 10 * 60 * 1000);
+    }
   });
-  logger.info("Telegram bot initializing...");
+
+  // Start Telegram bot
+  const bot = createBot();
+  if (bot) {
+    bot.start({
+      onStart: (info) => logger.info({ username: info.username }, "Bot started"),
+    });
+    logger.info("Telegram bot initializing...");
+  }
 }
+
+main().catch((err) => {
+  logger.error({ err }, "Fatal startup error");
+  process.exit(1);
+});
