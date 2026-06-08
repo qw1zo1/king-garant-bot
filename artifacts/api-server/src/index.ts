@@ -41,10 +41,17 @@ async function main() {
   // Start Telegram bot
   const bot = createBot();
   if (bot) {
+    logger.info("Telegram bot initializing...");
     bot.start({
       onStart: (info) => logger.info({ username: info.username }, "Bot started"),
+    }).catch((err: unknown) => {
+      const code = (err as { error_code?: number })?.error_code;
+      if (code === 409) {
+        logger.warn("Bot conflict (409): another instance is already running — this instance will not poll");
+      } else {
+        logger.error({ err }, "Bot stopped with error");
+      }
     });
-    logger.info("Telegram bot initializing...");
   }
 }
 
