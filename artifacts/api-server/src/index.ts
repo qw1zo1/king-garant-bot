@@ -38,20 +38,24 @@ async function main() {
     }, 10 * 60 * 1000);
   });
 
-  // Start Telegram bot
-  const bot = createBot();
-  if (bot) {
-    logger.info("Telegram bot initializing...");
-    bot.start({
-      onStart: (info) => logger.info({ username: info.username }, "Bot started"),
-    }).catch((err: unknown) => {
-      const code = (err as { error_code?: number })?.error_code;
-      if (code === 409) {
-        logger.warn("Bot conflict (409): another instance is already running — this instance will not poll");
-      } else {
-        logger.error({ err }, "Bot stopped with error");
-      }
-    });
+  // Start Telegram bot (polling only in production — avoids 409 conflicts with Render)
+  if (process.env.NODE_ENV !== "production") {
+    logger.info("Skipping bot polling in development (NODE_ENV != production). Run on Render for live bot.");
+  } else {
+    const bot = createBot();
+    if (bot) {
+      logger.info("Telegram bot initializing...");
+      bot.start({
+        onStart: (info) => logger.info({ username: info.username }, "Bot started"),
+      }).catch((err: unknown) => {
+        const code = (err as { error_code?: number })?.error_code;
+        if (code === 409) {
+          logger.warn("Bot conflict (409): another instance already running");
+        } else {
+          logger.error({ err }, "Bot stopped with error");
+        }
+      });
+    }
   }
 }
 
