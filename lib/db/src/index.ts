@@ -8,12 +8,31 @@ const { Pool } = pg;
 export let pool: pg.Pool | null = null;
 export let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
-if (process.env.DATABASE_URL) {
-  pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
-  });
-  db = drizzle(pool, { schema });
+const dbUrl = process.env.DATABASE_URL;
+
+if (dbUrl) {
+  try {
+    // Parse DATABASE_URL manually to avoid pg-connection-string URL parsing bugs
+    const parsed = new URL(dbUrl);
+    pool = new Pool({
+      host: parsed.hostname,
+      port: parseInt(parsed.port || "5432"),
+      user: decodeURIComponent(parsed.username),
+      password: decodeURIComponent(parsed.password),
+      database: parsed.pathname.replace(/^\//, ""),
+      ssl: { rejectUnauthorized: false },
+      max: 5,
+    });
+    db = drizzle(pool, { schema });
+  } catch {
+    // fallback: pass connection string directly
+    pool = new Pool({
+      connectionString: dbUrl,
+      ssl: { rejectUnauthorized: false },
+      max: 5,
+    });
+    db = drizzle(pool, { schema });
+  }
 }
 
 export async function runMigrations() {
