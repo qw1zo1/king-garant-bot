@@ -295,7 +295,7 @@ export function createBot() {
   async function sendStats(ctx: MyContext) {
     if (!isPrivate(ctx)) return;
     const allDeals = db ? await db.select().from(dealsTable) : [];
-    const paid = allDeals.filter(d => d.status === "paid").length;
+    const paid = allDeals.filter((d: { status: string }) => d.status === "paid").length;
     const total = Math.max(paid + 19783, 19783);
     const caption =
       "📊 *Статистика King Garant Bot*\n\n" +

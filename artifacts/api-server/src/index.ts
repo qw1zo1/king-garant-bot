@@ -1,7 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { createBot } from "./bot";
-import { runMigrations } from "@workspace/db";
+import { connectDb, runMigrations } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
 
@@ -15,12 +15,17 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 async function main() {
-  // Run DB migrations — do NOT crash if they fail
-  try {
-    await runMigrations();
-    logger.info("Database migrations applied");
-  } catch (err) {
-    logger.warn({ err }, "DB migrations failed — continuing without DB");
+  // Connect to DB then run migrations
+  const connected = await connectDb();
+  if (connected) {
+    try {
+      await runMigrations();
+      logger.info("Database ready");
+    } catch (err) {
+      logger.warn({ err }, "Migrations failed — DB may not be fully set up");
+    }
+  } else {
+    logger.warn("No DATABASE_URL — running without database");
   }
 
   app.listen(port, (err) => {
@@ -40,7 +45,7 @@ async function main() {
 
   // Start Telegram bot (polling only in production — avoids 409 conflicts with Render)
   if (process.env.NODE_ENV !== "production") {
-    logger.info("Skipping bot polling in development (NODE_ENV != production). Run on Render for live bot.");
+    logger.info("Dev mode: skipping bot polling (run on Render for live bot)");
   } else {
     const bot = createBot();
     if (bot) {
@@ -50,7 +55,7 @@ async function main() {
       }).catch((err: unknown) => {
         const code = (err as { error_code?: number })?.error_code;
         if (code === 409) {
-          logger.warn("Bot conflict (409): another instance already running");
+          logger.warn("Bot 409 conflict — another instance already running");
         } else {
           logger.error({ err }, "Bot stopped with error");
         }

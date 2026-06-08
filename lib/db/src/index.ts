@@ -3,36 +3,44 @@ import { sql } from "drizzle-orm";
 import pg from "pg";
 import * as schema from "./schema";
 
-const { Pool } = pg;
+const { Client } = pg;
 
-export let pool: pg.Pool | null = null;
-export let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
+export let client: pg.Client | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export let db: any = null;
 
 const dbUrl = process.env.DATABASE_URL;
 const isProduction = process.env.NODE_ENV === "production";
 
 if (dbUrl) {
   try {
-    // Parse URL manually to avoid pg-connection-string parsing bugs on some Render URLs
     const parsed = new URL(dbUrl);
-    pool = new Pool({
+    client = new Client({
       host: parsed.hostname,
       port: parseInt(parsed.port || "5432"),
       user: decodeURIComponent(parsed.username),
       password: decodeURIComponent(parsed.password),
       database: parsed.pathname.replace(/^\//, ""),
       ssl: isProduction ? { rejectUnauthorized: false } : false,
-      max: 5,
     });
   } catch {
-    // URL parsing failed — fallback to connection string
-    pool = new Pool({
+    client = new Client({
       connectionString: dbUrl,
       ssl: isProduction ? { rejectUnauthorized: false } : false,
-      max: 5,
     });
   }
-  db = drizzle(pool, { schema });
+  db = drizzle(client, { schema });
+}
+
+// Must call this once at startup before any queries
+export async function connectDb(): Promise<boolean> {
+  if (!client) return false;
+  try {
+    await client.connect();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function runMigrations() {
