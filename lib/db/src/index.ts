@@ -9,10 +9,11 @@ export let pool: pg.Pool | null = null;
 export let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
 const dbUrl = process.env.DATABASE_URL;
+const isProduction = process.env.NODE_ENV === "production";
 
 if (dbUrl) {
   try {
-    // Parse DATABASE_URL manually to avoid pg-connection-string URL parsing bugs
+    // Parse URL manually to avoid pg-connection-string parsing bugs on some Render URLs
     const parsed = new URL(dbUrl);
     pool = new Pool({
       host: parsed.hostname,
@@ -20,19 +21,18 @@ if (dbUrl) {
       user: decodeURIComponent(parsed.username),
       password: decodeURIComponent(parsed.password),
       database: parsed.pathname.replace(/^\//, ""),
-      ssl: { rejectUnauthorized: false },
+      ssl: isProduction ? { rejectUnauthorized: false } : false,
       max: 5,
     });
-    db = drizzle(pool, { schema });
   } catch {
-    // fallback: pass connection string directly
+    // URL parsing failed — fallback to connection string
     pool = new Pool({
       connectionString: dbUrl,
-      ssl: { rejectUnauthorized: false },
+      ssl: isProduction ? { rejectUnauthorized: false } : false,
       max: 5,
     });
-    db = drizzle(pool, { schema });
   }
+  db = drizzle(pool, { schema });
 }
 
 export async function runMigrations() {
