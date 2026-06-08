@@ -9,7 +9,10 @@ export let pool: pg.Pool | null = null;
 export let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
 if (process.env.DATABASE_URL) {
-  pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+  });
   db = drizzle(pool, { schema });
 }
 
