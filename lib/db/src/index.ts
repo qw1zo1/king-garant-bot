@@ -18,15 +18,18 @@ function tryDecode(s: string): string {
 /**
  * Parse a postgres[ql]:// URL using only string operations.
  * Never calls new URL(), never calls pg-connection-string.
- * Handles passwords with special characters (@, /, etc.) if properly encoded.
  */
 function parsePgUrl(raw: string): pg.ClientConfig | null {
   try {
-    // Strip scheme
-    let s = raw;
+    const clean = raw.trim();
+
+    let s = clean;
     if (s.startsWith("postgresql://")) s = s.slice("postgresql://".length);
     else if (s.startsWith("postgres://")) s = s.slice("postgres://".length);
-    else return null;
+    else {
+      console.error("[db] DATABASE_URL does not start with postgres[ql]:// — value:", clean.slice(0, 30));
+      return null;
+    }
 
     // Strip query string and fragment
     const qIdx = s.indexOf("?");
@@ -36,28 +39,35 @@ function parsePgUrl(raw: string): pg.ClientConfig | null {
 
     // Find userinfo@hostpart — use LAST @ to handle encoded @ in passwords
     const atIdx = s.lastIndexOf("@");
-    if (atIdx < 0) return null;
+    if (atIdx < 0) {
+      console.error("[db] DATABASE_URL missing @ separator — URL appears incomplete. Copy the full Internal Connection String from Render PostgreSQL service page.");
+      return null;
+    }
 
     const userinfo = s.slice(0, atIdx);
-    const hostpart = s.slice(atIdx + 1);
+    const hostpart = s.slice(atIdx + 1).trim();
 
-    // Split user:password
+    // Split user:password (first colon only)
     const colonIdx = userinfo.indexOf(":");
-    const user = colonIdx >= 0 ? userinfo.slice(0, colonIdx) : userinfo;
-    const password = colonIdx >= 0 ? userinfo.slice(colonIdx + 1) : "";
+    const user = (colonIdx >= 0 ? userinfo.slice(0, colonIdx) : userinfo).trim();
+    const password = (colonIdx >= 0 ? userinfo.slice(colonIdx + 1) : "").trim();
 
     // Split hostpart into host[:port] / database
     const slashIdx = hostpart.indexOf("/");
-    const hostPort = slashIdx >= 0 ? hostpart.slice(0, slashIdx) : hostpart;
-    const database = slashIdx >= 0 ? hostpart.slice(slashIdx + 1) : "";
+    const hostPort = (slashIdx >= 0 ? hostpart.slice(0, slashIdx) : hostpart).trim();
+    const database = (slashIdx >= 0 ? hostpart.slice(slashIdx + 1) : "").trim();
 
     // Split host:port — use LAST : to handle IPv6 addresses
     const lastColon = hostPort.lastIndexOf(":");
-    const host = lastColon >= 0 ? hostPort.slice(0, lastColon) : hostPort;
+    const host = (lastColon >= 0 ? hostPort.slice(0, lastColon) : hostPort).trim();
     const portStr = lastColon >= 0 ? hostPort.slice(lastColon + 1) : "5432";
 
-    if (!host) return null;
+    if (!host) {
+      console.error("[db] DATABASE_URL parsed host is empty");
+      return null;
+    }
 
+    console.log(`[db] Parsed OK → host=${host}, port=${portStr}, db=${database}`);
     return {
       host,
       port: parseInt(portStr, 10) || 5432,
@@ -65,14 +75,18 @@ function parsePgUrl(raw: string): pg.ClientConfig | null {
       password: tryDecode(password),
       database: tryDecode(database),
     };
-  } catch {
+  } catch (e) {
+    console.error("[db] parsePgUrl threw:", e);
     return null;
   }
 }
 
-const dbUrl = process.env.DATABASE_URL;
+const rawDbUrl = process.env.DATABASE_URL;
 
-if (dbUrl) {
+if (rawDbUrl) {
+  const dbUrl = rawDbUrl.trim();
+  console.log(`[db] DATABASE_URL present: len=${dbUrl.length}, hasAt=${dbUrl.includes("@")}, scheme=${dbUrl.slice(0, 15)}`);
+
   const params = parsePgUrl(dbUrl);
   if (params) {
     client = new Client({
@@ -81,11 +95,12 @@ if (dbUrl) {
     });
     db = drizzle(client, { schema });
   } else {
-    // Fallback: set PG* env vars so pg reads individual fields (no URL parsing)
-    process.env.PGHOST = dbUrl.replace(/^postgres(?:ql)?:\/\/[^@]+@/, "").split("/")[0].split(":")[0];
-    // If even this fails, we just skip DB — bot will work without wallet/deals
-    console.warn("[db] WARNING: Could not parse DATABASE_URL, running without database");
+    console.error("[db] FATAL: Could not parse DATABASE_URL. DB is unavailable.");
+    console.error("[db] Expected format: postgresql://USER:PASSWORD@HOST/DATABASE");
+    console.error("[db] Go to Render → PostgreSQL service → Connect → copy Internal Connection String");
   }
+} else {
+  console.warn("[db] DATABASE_URL not set — no database");
 }
 
 /** Connect to the database. Must be called once at startup before any queries. */
@@ -97,6 +112,7 @@ export async function connectDb(): Promise<boolean> {
   } catch (err) {
     const msg = String((err as Error)?.message ?? "");
     if (msg.includes("already been connected")) return true;
+    console.error("[db] connectDb failed:", msg);
     return false;
   }
 }
