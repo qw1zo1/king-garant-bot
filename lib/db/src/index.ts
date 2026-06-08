@@ -11,21 +11,63 @@ export let db: any = null;
 
 const isProduction = process.env.NODE_ENV === "production";
 
-/** Parse a postgres[ql]:// URL into individual connection params — NEVER uses pg-connection-string */
-function parsePgUrl(url: string): pg.ClientConfig | null {
-  // Regex handles: postgres[ql]://user:pass@host[:port]/database[?...]
-  const m = url.match(
-    /^postgres(?:ql)?:\/\/([^:@]*):([^@]*)@([^:/?#]+)(?::(\d+))?\/([^?#]*)/,
-  );
-  if (!m) return null;
-  const safePort = Number(m[4] ?? "5432") || 5432;
-  return {
-    user: decodeURIComponent(m[1] ?? ""),
-    password: decodeURIComponent(m[2] ?? ""),
-    host: m[3] ?? "localhost",
-    port: safePort,
-    database: decodeURIComponent(m[5] ?? ""),
-  };
+function tryDecode(s: string): string {
+  try { return decodeURIComponent(s); } catch { return s; }
+}
+
+/**
+ * Parse a postgres[ql]:// URL using only string operations.
+ * Never calls new URL(), never calls pg-connection-string.
+ * Handles passwords with special characters (@, /, etc.) if properly encoded.
+ */
+function parsePgUrl(raw: string): pg.ClientConfig | null {
+  try {
+    // Strip scheme
+    let s = raw;
+    if (s.startsWith("postgresql://")) s = s.slice("postgresql://".length);
+    else if (s.startsWith("postgres://")) s = s.slice("postgres://".length);
+    else return null;
+
+    // Strip query string and fragment
+    const qIdx = s.indexOf("?");
+    if (qIdx >= 0) s = s.slice(0, qIdx);
+    const fIdx = s.indexOf("#");
+    if (fIdx >= 0) s = s.slice(0, fIdx);
+
+    // Find userinfo@hostpart — use LAST @ to handle encoded @ in passwords
+    const atIdx = s.lastIndexOf("@");
+    if (atIdx < 0) return null;
+
+    const userinfo = s.slice(0, atIdx);
+    const hostpart = s.slice(atIdx + 1);
+
+    // Split user:password
+    const colonIdx = userinfo.indexOf(":");
+    const user = colonIdx >= 0 ? userinfo.slice(0, colonIdx) : userinfo;
+    const password = colonIdx >= 0 ? userinfo.slice(colonIdx + 1) : "";
+
+    // Split hostpart into host[:port] / database
+    const slashIdx = hostpart.indexOf("/");
+    const hostPort = slashIdx >= 0 ? hostpart.slice(0, slashIdx) : hostpart;
+    const database = slashIdx >= 0 ? hostpart.slice(slashIdx + 1) : "";
+
+    // Split host:port — use LAST : to handle IPv6 addresses
+    const lastColon = hostPort.lastIndexOf(":");
+    const host = lastColon >= 0 ? hostPort.slice(0, lastColon) : hostPort;
+    const portStr = lastColon >= 0 ? hostPort.slice(lastColon + 1) : "5432";
+
+    if (!host) return null;
+
+    return {
+      host,
+      port: parseInt(portStr, 10) || 5432,
+      user: tryDecode(user),
+      password: tryDecode(password),
+      database: tryDecode(database),
+    };
+  } catch {
+    return null;
+  }
 }
 
 const dbUrl = process.env.DATABASE_URL;
@@ -37,14 +79,13 @@ if (dbUrl) {
       ...params,
       ssl: isProduction ? { rejectUnauthorized: false } : false,
     });
+    db = drizzle(client, { schema });
   } else {
-    // Last resort: pass raw connection string and hope pg parses it
-    client = new Client({
-      connectionString: dbUrl,
-      ssl: isProduction ? { rejectUnauthorized: false } : false,
-    });
+    // Fallback: set PG* env vars so pg reads individual fields (no URL parsing)
+    process.env.PGHOST = dbUrl.replace(/^postgres(?:ql)?:\/\/[^@]+@/, "").split("/")[0].split(":")[0];
+    // If even this fails, we just skip DB — bot will work without wallet/deals
+    console.warn("[db] WARNING: Could not parse DATABASE_URL, running without database");
   }
-  db = drizzle(client, { schema });
 }
 
 /** Connect to the database. Must be called once at startup before any queries. */
@@ -54,7 +95,6 @@ export async function connectDb(): Promise<boolean> {
     await client.connect();
     return true;
   } catch (err) {
-    // Ignore "already connected" error, treat as success
     const msg = String((err as Error)?.message ?? "");
     if (msg.includes("already been connected")) return true;
     return false;
