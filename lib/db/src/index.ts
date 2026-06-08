@@ -11,13 +11,14 @@ export let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 if (process.env.DATABASE_URL) {
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+    ssl: { rejectUnauthorized: false },
   });
   db = drizzle(pool, { schema });
 }
 
 export async function runMigrations() {
-  if (!db) return; // no DB configured — skip
+  if (!db) return;
+
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "balances" (
       "user_id"    text PRIMARY KEY NOT NULL,
@@ -37,7 +38,10 @@ export async function runMigrations() {
       "not_coin"   text NOT NULL DEFAULT '0',
       "sol"        text NOT NULL DEFAULT '0',
       "created_at" timestamp NOT NULL DEFAULT now()
-    );
+    )
+  `);
+
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "deals" (
       "deal_id"    text PRIMARY KEY NOT NULL,
       "seller_id"  text NOT NULL,
@@ -47,7 +51,7 @@ export async function runMigrations() {
       "currency"   text NOT NULL,
       "status"     text NOT NULL DEFAULT 'active',
       "created_at" timestamp NOT NULL DEFAULT now()
-    );
+    )
   `);
 }
 

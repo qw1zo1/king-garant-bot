@@ -15,13 +15,12 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 async function main() {
-  // Run DB migrations automatically on every startup
+  // Run DB migrations — do NOT crash if they fail
   try {
     await runMigrations();
     logger.info("Database migrations applied");
   } catch (err) {
-    logger.error({ err }, "Failed to run DB migrations");
-    process.exit(1);
+    logger.warn({ err }, "DB migrations failed — continuing without DB");
   }
 
   app.listen(port, (err) => {
@@ -31,14 +30,12 @@ async function main() {
     }
     logger.info({ port }, "Server listening");
 
-    // Keep-alive ping every 10 min so Render doesn't suspend the service
-    if (process.env.NODE_ENV === "production") {
-      setInterval(() => {
-        import("node:http").then(({ default: http }) => {
-          http.get(`http://localhost:${port}/api/healthz`, () => {}).on("error", () => {});
-        });
-      }, 10 * 60 * 1000);
-    }
+    // Keep-alive ping every 10 min so Render free tier doesn't spin down
+    setInterval(() => {
+      import("node:http").then(({ default: http }) => {
+        http.get(`http://localhost:${port}/api/healthz`, () => {}).on("error", () => {});
+      });
+    }, 10 * 60 * 1000);
   });
 
   // Start Telegram bot
